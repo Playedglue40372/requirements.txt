@@ -1,10 +1,7 @@
-import asyncio
-import os
-import re
 import sys
 import subprocess
 
-# Автоматическая установка недостающих библиотек прямо при старте кода
+# 1. Автоматическая установка необходимых библиотек
 required_libraries = ["aiohttp", "pyrogram", "tgcrypto"]
 for lib in required_libraries:
     try:
@@ -13,10 +10,19 @@ for lib in required_libraries:
         print(f"Библиотека {lib} не найдена. Устанавливаю...", flush=True)
         subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
 
-# Теперь библиотеки гарантированно установлены, импортируем их
+import asyncio
+import os
+import re
 from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+# 2. ЖЕСТКОЕ ИСПРАВЛЕНИЕ EVENT LOOP ДЛЯ RENDER
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 # ====== КОСТЫЛЬ ДЛЯ ПОРТА RENDER ======
 async def handle_health(request):
@@ -94,7 +100,7 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        loop.run_until_complete(main())
     except (KeyboardInterrupt, SystemExit):
         pass
 
