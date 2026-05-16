@@ -2,6 +2,18 @@ import asyncio
 import os
 import re
 import sys
+import subprocess
+
+# Автоматическая установка недостающих библиотек прямо при старте кода
+required_libraries = ["aiohttp", "pyrogram", "tgcrypto"]
+for lib in required_libraries:
+    try:
+        __import__(lib)
+    except ImportError:
+        print(f"Библиотека {lib} не найдена. Устанавливаю...", flush=True)
+        subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
+
+# Теперь библиотеки гарантированно установлены, импортируем их
 from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -36,7 +48,6 @@ def keyboard():
     )
 
 async def get_proxy():
-    # Защита от битого файла сессии: если файл поврежден, скрипт не упадет
     try:
         user = Client("proxy_user", api_id=API_ID, api_hash=API_HASH, workdir=".")
         await user.start()
@@ -59,7 +70,7 @@ async def get_proxy():
             
     await user.stop()
     proxy = re.findall(r"\d+\.\d+\.\d+\.\d+:\d+", text)
-    return proxy[0] if proxy else "Не удалось получить прокси"
+    return proxy if proxy else "Не удалось получить прокси"
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
@@ -75,9 +86,7 @@ async def callback(client, callback_query):
         )
 
 async def main():
-    # Сначала запускаем веб-сервер для Render
     await start_web_server()
-    # Затем запускаем основного бота
     await app.start()
     print("Бот успешно запущен и готов к работе!", flush=True)
     while True:
