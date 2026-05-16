@@ -6,6 +6,20 @@ from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+# ====== КОСТЫЛЬ ДЛЯ ПОРТА RENDER ======
+async def handle_health(request):
+    return web.Response(text="OK")
+
+async def start_web_server():
+    server = web.Application()
+    server.add_routes([web.get("/", handle_health)])
+    runner = web.AppRunner(server)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"Веб-заглушка успешно заведена на порту {port}", flush=True)
+
 # ====== ЧТЕНИЕ ПЕРЕМЕННЫХ ИЗ ПАНЕЛИ RENDER ======
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
@@ -22,19 +36,30 @@ def keyboard():
     )
 
 async def get_proxy():
-    user = Client("proxy_user", api_id=API_ID, api_hash=API_HASH, workdir=".")
-    await user.start()
+    # Защита от битого файла сессии: если файл поврежден, скрипт не упадет
+    try:
+        user = Client("proxy_user", api_id=API_ID, api_hash=API_HASH, workdir=".")
+        await user.start()
+    except Exception as e:
+        print(f"Ошибка сессии юзербота: {e}. Пробую удалить старый файл сессии...", flush=True)
+        if os.path.exists("./proxy_user.session"):
+            os.remove("./proxy_user.session")
+        user = Client("proxy_user", api_id=API_ID, api_hash=API_HASH, workdir=".")
+        await user.start()
+
     await user.send_message("TProxyRobot", "/start")
     await asyncio.sleep(2)
     await user.send_message("TProxyRobot", "Получить прокси")
     await asyncio.sleep(3)
+    
     text = ""
     async for msg in user.get_chat_history("TProxyRobot", limit=5):
         if msg.text:
             text += msg.text + "\n"
+            
     await user.stop()
     proxy = re.findall(r"\d+\.\d+\.\d+\.\d+:\d+", text)
-    return proxy if proxy else "Не удалось получить прокси"
+    return proxy[0] if proxy else "Не удалось получить прокси"
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
@@ -49,26 +74,12 @@ async def callback(client, callback_query):
             f"📡 Прокси:\n\n{proxy}", reply_markup=keyboard()
         )
 
-# Хэндлер для проверки порта со стороны Render
-async def handle_health(request):
-    return web.Response(text="OK")
-
 async def main():
-    # 1. Запуск веб-сервера асинхронно в том же потоке
-    server = web.Application()
-    server.add_routes([web.get("/", handle_health)])
-    runner = web.AppRunner(server)
-    await runner.setup()
-    port = int(os.getenv("PORT", "10000"))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-    print("Веб-заглушка успешно запущена на порту", port, flush=True)
-
-    # 2. Запуск основного бота Telegram
+    # Сначала запускаем веб-сервер для Render
+    await start_web_server()
+    # Затем запускаем основного бота
     await app.start()
-    print("Бот успешно запущен!", flush=True)
-    
-    # Держим процесс активным
+    print("Бот успешно запущен и готов к работе!", flush=True)
     while True:
         await asyncio.sleep(3600)
 
