@@ -2,27 +2,11 @@ import asyncio
 import os
 import re
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import threading
+from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-# ====== ВЕБ-СЕРВЕР ДЛЯ ОБМАНА RENDER ======
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"OK")
-
-def run_health_server():
-    port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_health_server, daemon=True).start()
-
-# ====== ЧТЕНИЕ ПЕРЕМЕННЫХ ======
+# ====== ЧТЕНИЕ ПЕРЕМЕННЫХ ИЗ ПАНЕЛИ RENDER ======
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -65,9 +49,26 @@ async def callback(client, callback_query):
             f"📡 Прокси:\n\n{proxy}", reply_markup=keyboard()
         )
 
+# Хэндлер для проверки порта со стороны Render
+async def handle_health(request):
+    return web.Response(text="OK")
+
 async def main():
+    # 1. Запуск веб-сервера асинхронно в том же потоке
+    server = web.Application()
+    server.add_routes([web.get("/", handle_health)])
+    runner = web.AppRunner(server)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print("Веб-заглушка успешно запущена на порту", port, flush=True)
+
+    # 2. Запуск основного бота Telegram
     await app.start()
     print("Бот успешно запущен!", flush=True)
+    
+    # Держим процесс активным
     while True:
         await asyncio.sleep(3600)
 
